@@ -27,7 +27,7 @@
 namespace cpu_pf
 {
 
-class ParticleFilterCPU
+class ParticleFilter
 {
 public:
 
@@ -37,10 +37,10 @@ public:
    * @param The number of weights to use for resampling.
    * @param The number of resamples taken from the weight vector.
    */
-  explicit ParticleFilterCPU(int n, int m);
+  explicit ParticleFilter(int n, int m);
 
   
-  ~ParticleFilterCPU();
+  ~ParticleFilter();
   /**
    * @brief constructs the cdf of the weights from the pdf.
    *
@@ -76,6 +76,16 @@ public:
    */
   unsigned int getSampleIndex(unsigned int index);
 
+  
+  /**
+   * @brief get the sampling length of the filter
+   */
+  int getSamplingSize() const;
+
+  /**
+   * @brief get the weight length of the filter
+   */
+  int getWeightsSize() const;
 
 private:
   /**

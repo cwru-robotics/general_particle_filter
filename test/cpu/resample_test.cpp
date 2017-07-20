@@ -24,7 +24,7 @@
 #include <random>
 
 
-struct resamplingTest : testing::Test, cpu_pf::ParticleFilterCPU
+struct resamplingTest : testing::Test, cpu_pf::ParticleFilter
 {
     
     double manual_weights_[10];
@@ -33,7 +33,7 @@ struct resamplingTest : testing::Test, cpu_pf::ParticleFilterCPU
 
     // test object constructor
     resamplingTest():
-    ParticleFilterCPU(10, 10),
+    ParticleFilter(10, 10),
     manual_weights_({0.05, 0.1, 0.05, 0.2, 0.15, 0.05, 0.1, 0.1, 0.05, 0.15}),
     sample_indecis_({0, 1, 3, 3, 4, 4, 6, 7, 8, 9}),
     seed_(0.03)

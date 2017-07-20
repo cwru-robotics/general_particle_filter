@@ -25,7 +25,7 @@ namespace cpu_pf
 {
 
 
-ParticleFilterCPU::ParticleFilterCPU(int n, int m):
+ParticleFilter::ParticleFilter(int n, int m):
 weights_cdf_(NULL),
 weights_pdf_(NULL),
 allocated_weights_(0),
@@ -36,13 +36,13 @@ allocated_samples_(0)
 }
 
 
-ParticleFilterCPU::~ParticleFilterCPU()
+ParticleFilter::~ParticleFilter()
 {
   deallocateWeights();
   deallocateSamples();
 }
 
-void ParticleFilterCPU::normalize_weights(double denominator)
+void ParticleFilter::normalize_weights(double denominator)
 {
   if (allocated_weights_ == 0) return;
 
@@ -62,7 +62,7 @@ void ParticleFilterCPU::normalize_weights(double denominator)
   }
 }
 
-void ParticleFilterCPU::construct_weight_cdf(double denominator)
+void ParticleFilter::construct_weight_cdf(double denominator)
 {
   if (allocated_weights_ == 0) return;
   // first normalize the weights
@@ -76,7 +76,7 @@ void ParticleFilterCPU::construct_weight_cdf(double denominator)
   }
 }
 
-int ParticleFilterCPU::allocateWeights(int n)
+int ParticleFilter::allocateWeights(int n)
 {
   size_t allocation_size(static_cast<size_t>(n));
   weights_cdf_ = reinterpret_cast<double*> (calloc(allocation_size, sizeof(double)));
@@ -84,7 +84,7 @@ int ParticleFilterCPU::allocateWeights(int n)
   allocated_weights_ = n;
 }
 
-int ParticleFilterCPU::allocateSamples(int m)
+int ParticleFilter::allocateSamples(int m)
 {
   size_t allocation_size(static_cast<size_t>(m));
   sample_indecis_ = reinterpret_cast<unsigned int*> (calloc(allocation_size, sizeof(unsigned int)));
@@ -92,7 +92,7 @@ int ParticleFilterCPU::allocateSamples(int m)
   allocated_samples_ = m;
 }
 
-void ParticleFilterCPU::deallocateWeights()
+void ParticleFilter::deallocateWeights()
 {
   free (weights_cdf_);
   weights_cdf_ = NULL;
@@ -101,14 +101,14 @@ void ParticleFilterCPU::deallocateWeights()
   allocated_weights_ = 0;
 }
 
-void ParticleFilterCPU::deallocateSamples()
+void ParticleFilter::deallocateSamples()
 {
   free (sample_indecis_);
   sample_indecis_ = NULL;
   allocated_samples_ = 0;
 }
 
-void ParticleFilterCPU::sampleParticles(double seed)
+void ParticleFilter::sampleParticles(double seed)
 {
   double i_seed(seed);
   double sample_interval(1.0/static_cast<double>(allocated_samples_));
@@ -134,15 +134,24 @@ void ParticleFilterCPU::sampleParticles(double seed)
   }
 }
 
-void ParticleFilterCPU::setParticleWeight(int index, double value)
+void ParticleFilter::setParticleWeight(int index, double value)
 {
   weights_pdf_[index] = value;
 }
 
-unsigned int ParticleFilterCPU::getSampleIndex(unsigned int index)
+unsigned int ParticleFilter::getSampleIndex(unsigned int index)
 {
   return sample_indecis_[index];
 }
 
+int ParticleFilter::getSamplingSize() const
+{
+  return allocated_samples_;
+}
+
+int ParticleFilter::getWeightsSize() const
+{
+  return allocated_weights_;
+}
 
 };  // namespace cpu_pf
