@@ -5,7 +5,6 @@ add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS roscpp)
 find_package(CUDA)
-find_package(OpenCV REQUIRED)
 
 
 catkin_python_setup()
@@ -21,7 +20,6 @@ catkin_package(
 include_directories(
     include
     ${catkin_INCLUDE_DIRS}
-    ${OpenCV_INCLUDE_DIRS}
 )
 
 add_library(particle_filter_cpu

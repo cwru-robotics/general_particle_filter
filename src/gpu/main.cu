@@ -1,6 +1,7 @@
 #include <general_particle_filter/gpu/particle_filter.h>
 #include <iostream>
 #include <cuda.h>
+#include <ros/ros.h>
 
 
 int main(int argc, char **argv)
@@ -15,7 +16,6 @@ int main(int argc, char **argv)
     pf.construct_weight_cdf();
 
     pf.sampleParticles(0.05);
-
 
     return 0;
 }
