@@ -36,16 +36,13 @@ target_link_libraries(gtest_cpu_resampling
 
 if(CUDA_FOUND)
     message("...Found CUDA ${CUDA_VERSION}")
-    if(OpenCV_CUDA_VERSION)
-        message("...Opencv compiled with cuda version ${OpenCV_CUDA_VERSION}")
-    endif()
 endif()
 
-if(CUDA_FOUND AND OpenCV_CUDA_VERSION)
+if(CUDA_FOUND)
     SET(CUDA_NVCC_FLAGS "-arch=compute_30" CACHE STRING "nvcc flags" FORCE)
 endif()
 
-if(CUDA_FOUND AND OpenCV_CUDA_VERSION)
+if(CUDA_FOUND)
     cuda_add_library(particle_filter_gpu src/gpu/particle_filter.cu)
 
     cuda_add_executable(main_gpu src/gpu/main.cu)
