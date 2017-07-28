@@ -51,7 +51,7 @@ if(CUDA_FOUND)
     target_link_libraries(main_gpu particle_filter_gpu)
 
     message("$ENV{TRAVIS}")
-    if (DEFINED $ENV{TRAVIS} AND $ENV{TRAVIS})
+    if (DEFINED $ENV{TRAVIS})
         message("On Travis, not building the cuda unit tests")
     else()
         message("Not on Travis, building the cuda unit tests")
