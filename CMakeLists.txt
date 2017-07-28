@@ -50,9 +50,15 @@ if(CUDA_FOUND)
     target_link_libraries(particle_filter_gpu ${CUDA_LIBRARIES} ${catkin_LIBRARIES} )
     target_link_libraries(main_gpu particle_filter_gpu)
 
-    catkin_add_gtest(gtest_gpu_resampling test/gpu/resample_test.cpp)
-    target_link_libraries(gtest_gpu_resampling
-            particle_filter_gpu
-            ${catkin_LIBRARIES}
-            ${CUDA_LIBRARIES})
+    message("$ENV{TRAVIS}")
+    if (DEFINED $ENV{TRAVIS} AND $ENV{TRAVIS})
+        message("On Travis, not building the cuda unit tests")
+    else()
+        message("Not on Travis, building the cuda unit tests")
+        catkin_add_gtest(gtest_gpu_resampling test/gpu/resample_test.cpp)
+        target_link_libraries(gtest_gpu_resampling
+                particle_filter_gpu
+                ${catkin_LIBRARIES}
+                ${CUDA_LIBRARIES})
+    endif()
 endif()
