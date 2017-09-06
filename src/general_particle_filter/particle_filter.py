@@ -26,6 +26,7 @@ import object_tracker.car_state_to_marker as convert
 from object_tracker.intruder_model import intruder_odds
 import car_sim.random_car_generator as random_car
 
+
 class particle_filter(object):
     """
     Represents a particle filter object
@@ -73,7 +74,7 @@ class particle_filter(object):
         self.particle_count = particle_count_
 
         self.car_particles = [State()] * self.particle_count
-        
+
         self.action = Action()
         self.action_queue = 0
 
@@ -96,7 +97,6 @@ class particle_filter(object):
 
         self.comp_rate = -1
 
-
     def start_ros_rviz_interface(self):
         """
         Starts running the publishers and subscribers required for interfacing to rviz and the car simulator.
@@ -109,11 +109,11 @@ class particle_filter(object):
         self.particle_pub = rospy.Publisher(self.car_name + "/particle_pose", MarkerArray,
                                             queue_size=1)
 
-        #self.temp_particle_pub = rospy.Publisher(self.car_name + "/temp_particle_pose", MarkerArray,
-        #                                    queue_size=1)
+        # self.temp_particle_pub = rospy.Publisher(self.car_name + "/temp_particle_pose", MarkerArray,
+        #                                     queue_size=1)
 
         self.comp_rate_pub = rospy.Publisher(self.car_name + "/comp_rate", Float64,
-                                            queue_size=1)
+                                             queue_size=1)
 
     def prb_weight_prtcl(self, sensor_point, last_prob):
         """
@@ -184,7 +184,6 @@ class particle_filter(object):
 
         self.car_particles[:] = new_car_particles[:]
 
-
     def action_callback(self, action_):
         """
         updates points in particle list through a motion model
@@ -195,7 +194,6 @@ class particle_filter(object):
         """
         with self.lock:
             self.action = action_
-
 
     def state_callback(self, state_):
         """
@@ -231,7 +229,7 @@ class particle_filter(object):
                 tot_weight = 0.0
 
                 base_index = -1
-                
+
                 for index in range(0, self.total_particles):
                     # compute the new overal index:
                     if index % self.particle_count == 0:
@@ -239,7 +237,7 @@ class particle_filter(object):
 
                     compStatus = (self.car_particles[base_index].intruderStatus.intruder != Intruder.OK)
                     if index % self.particle_count == 0:
-                        # The car transitions to not compromised:    
+                        # The car transitions to not compromised:
                         pre_weight = (1 - intruder_odds(compStatus))
                         actionTemp = deepcopy(self.action)
                         nextIntruder = Intruder.OK
@@ -270,9 +268,7 @@ class particle_filter(object):
                 #self.pub_unsampled_markers(now)
                 self.sample_points()
 
-                
                 self.last_time = now
-                
 
             # why not
             # self.pub_unsampled_markers(now)
@@ -323,4 +319,3 @@ class particle_filter(object):
         publishes the weighted compromisation of the particle filter:
         """
         self.comp_rate_pub.publish(self.comp_rate)
-

@@ -1,0 +1,4 @@
+<launch>
+  <node name="gpu_example" pkg="general_particle_filter" type="planar_object_gpu_demo" />
+  <node name="rviz_watcher" pkg="rviz" type="rviz" args="-d $(find general_particle_filter)/planar_disp.rviz" />
+</launch>

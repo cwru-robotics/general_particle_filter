@@ -1,29 +1,27 @@
 /*
- *  particle_filter_cpu.cpp
- *  Copyright (C) 2017  Russell Jackson
+ * Copyright (C) 2017 Russell Jackson & CWRU Robotics
  *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
-
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
-
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 
 #include <general_particle_filter/cpu/particle_filter.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <random>
 
 namespace cpu_pf
 {
-
 
 ParticleFilter::ParticleFilter(int n, int m):
 weights_cdf_(NULL),
@@ -88,22 +86,21 @@ int ParticleFilter::allocateSamples(int m)
 {
   size_t allocation_size(static_cast<size_t>(m));
   sample_indecis_ = reinterpret_cast<unsigned int*> (calloc(allocation_size, sizeof(unsigned int)));
-  
   allocated_samples_ = m;
 }
 
 void ParticleFilter::deallocateWeights()
 {
-  free (weights_cdf_);
+  free(weights_cdf_);
   weights_cdf_ = NULL;
-  free (weights_pdf_);
+  free(weights_pdf_);
   weights_pdf_ = NULL;
   allocated_weights_ = 0;
 }
 
 void ParticleFilter::deallocateSamples()
 {
-  free (sample_indecis_);
+  free(sample_indecis_);
   sample_indecis_ = NULL;
   allocated_samples_ = 0;
 }
@@ -116,7 +113,7 @@ void ParticleFilter::sampleParticles(double seed)
   {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<double> distribution(0.0,sample_interval);
+    std::uniform_real_distribution<double> distribution(0.0, sample_interval);
     i_seed = distribution(gen);
   }
 
