@@ -22,23 +22,56 @@
 #include <cuda.h>
 #include <boost/random/normal_distribution.hpp>
 
+
+#define THREADBLOCK_SIZE 512
+
 namespace gpu_pf
 {
 
+extern const uint MAX_BATCH_ELEMENTS;
+extern const uint MIN_SHORT_ARRAY_SIZE;
+extern const uint MAX_SHORT_ARRAY_SIZE;
+extern const uint MIN_LARGE_ARRAY_SIZE;
+extern const uint MAX_LARGE_ARRAY_SIZE;
+
+
+uint iDivUp(uint dividend, uint divisor);
+
+
 /**
- * @brief GPU helper function to compute one sample index
+ * @brief GPU global function to compute the sample indices.
+ *
+ * This function is called by the cpu side code but is executed on the gpu side.
  *
  * @param weights vector of cdf weights
  * @param indices output vector of indices drawn in resampling
- * @param step defined as 1/# particles
- * @param seed random iterator
+ * @param step defined as 1/# output particles
+ * @param seed random seed number for the low variance resampling.
  * @param len # particles
- *
  */
 __global__ void sampleParallel(double * weights, unsigned int * indices, double step,
-                               double seed, int len);
+                               double seed, uint len);
 
+/**
+ * @brief The small variable sized
+ * @param d_Dst
+ * @param d_Src
+ * @param total
+ * @param size
+ */
+__global__ void scanInclusiveShared(double4 *d_Dst, double4 *d_Src, double* total, uint size);
 
+__global__ void scanInclusiveShared(double4 *d_Dst, double4 *d_Src, uint size);
+
+__global__ void scanExclusiveShared(double4 *d_Dst, double4 *d_Src, uint size);
+
+__global__ void normalizeWeightCDF(double *d_Dst, double* normalizer);
+
+__global__ void scanInclusiveShared2(double *d_Buf, double *d_Dst, double *d_Src, uint N, uint arrayLength);
+
+__global__ void scanExclusiveShared2(double *d_Buf, double *d_Dst, double *d_Src, uint N, uint arrayLength);
+
+__global__ void uniformUpdate(double4 *d_Data, double *d_Buffer, double *total, uint size);
 
 /**
  * @brief An abstract class which implements the common features of a particle filter on GPU
@@ -63,9 +96,9 @@ public:
   /**
   * @brief constructs the cdf of the weights from the pdf on host side
   * The CDF ends at 1.0
-  * @param denominator" optional precomputed denominator.
   */
-  void construct_weight_cdf(double denominator = -1.0);
+  void construct_weight_cdf();
+
 
   /**
   * @brief sample particles using the weights on device side in parallel and copy to host side
@@ -73,7 +106,7 @@ public:
   * It is expected that weight CDF exists and that all of the memory is allocated.
   * The sampling is completed using the low variance algorithm.
   */
-  void sampleParticles(double seed = -1.0);
+  void sampleParticleIndecis(double seed = -1.0);
 
   /**
   * @brief gets the one index from the resample vector
@@ -88,9 +121,21 @@ public:
   int getSamplingSize() const;
 
   /**
+   * @brief get the sampling length of the filter
+   */
+  int getPaddedSamplingSize() const;
+
+  /**
    * @brief get the weight length of the filter
    */
   int getWeightsSize() const;
+
+  /**
+   * @brief get the sampling length of the filter
+   */
+  int getPaddedWeightsSize() const;
+
+  int get4PaddedWeightsSize() const;
 
   /**
   * @brief the device side cumulative density function of the weights
@@ -109,18 +154,6 @@ public:
 
 private:
   /**
-   * @brief number of bytes used given the number of particles for arrays of doubles
-   * Used for memory allocation
-   */
-  int double_bytes;
-
-  /**
-   * @brief number of bytes used given the number of particles for arrays of ints
-   * Used for memory allocation
-   */
-  int int_bytes;
-
-  /**
    * @brief the probability density function of the weights host side.
    */
   double * h_weights_pdf_;
@@ -136,6 +169,19 @@ private:
   double * h_weights_cdf_;
 
   /**
+  * @brief the device sum;
+  */
+  double * d_weights_total_;
+
+  /**
+   * @brief The padded number of allocated weights.
+   *
+   * The padding is necessary for maintaining an optimized array size.
+   * The extraneous weights are padded at the end weight array.
+   */
+  int allocated_samples_padded_;
+
+  /**
    * @brief allocated status of the weights
    */
   int allocated_weights_;
@@ -146,19 +192,31 @@ private:
   int allocated_samples_;
 
   /**
+   * @brief The padded number of allocated weights.
+   *
+   * The padding is necessary for maintaining an optimized array size.
+   * The extraneous sampled are padded at the end weight array.
+   */
+  int allocated_weights_padded_block_;
+
+
+  int allocated_weights_padded_opt_;
+
+
+  /**
    * @brief Allocates the vector of weights for use in the particle filter
    * Allocate pdf host side and cdf device/host side
    * @param n The length of the weight vector.
    * @return 0 on sucess error otherwise.
    */
-  int allocateWeights(int n);
+  int allocateWeights(uint n);
 
   /**
    * @brief Allocates the vector of sample indices host/device side for use in the particle filter
    * @param n The length of the sample vector.
    * @return 0 on sucess error otherwise.
    */
-  int allocateSamples(int n);
+  int allocateSamples(uint n);
 
   /**
    * @brief normalize the weights of the particle filter such that the weights sum to 1.
@@ -177,6 +235,7 @@ private:
    */
   void deallocateWeights();
 };  // class gpu_pf::ParticleFilter
+
 
 }  // namespace gpu_pf
 

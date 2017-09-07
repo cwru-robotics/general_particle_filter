@@ -69,31 +69,48 @@ void ObjectState::act(const objectAction &obj_act, const double* random_d,
   obj_ref.clampPose();
 }
 
-__device__ void ObjectState::act_dev(objectAction *obj_act, double* random_d,
+__device__ void ObjectState::act(objectAction *obj_act, double2* random_d,
                                      objectVariance *obj_var, ObjectState *obj_ptr)
 {
-  double d_x(random_d[0] * obj_var->b_x_ * obj_act->dx_ + obj_act->dx_);
-  double d_y(random_d[1] * obj_var->b_y_ * obj_act->dy_ + obj_act->dy_);
+  double d_x(random_d->x * obj_var->b_x_ * obj_act->dx_ + obj_act->dx_);
+  double d_y(random_d->y * obj_var->b_y_ * obj_act->dy_ + obj_act->dy_);
   obj_ptr->x_pose_ = this->x_pose_ + d_x;
   obj_ptr->y_pose_ = this->y_pose_ + d_y;
   obj_ptr->clampPose();
 }
 
-__global__ void applyActionKernel(objectAction* obj_act, double *randomList,
-                                  ObjectState* obj_input, ObjectState* obj_result,
-                                  objectVariance* obj_var)
+__global__ void applyActionKernel(objectAction* obj_act, double2 *randomList,
+                                  ObjectState* obj_result, ObjectState* obj_input,
+                                  objectVariance* obj_var, uint particle_count)
 {
   unsigned int idx =  blockIdx.x * blockDim.x + threadIdx.x;
-  unsigned int d_idx(2 * idx);
 
-  obj_input[idx].act_dev(obj_act, randomList + d_idx, obj_var, obj_result + idx);
+  if (idx < particle_count)
+  {
+    obj_input[idx].act(obj_act, randomList + idx, obj_var, obj_result + idx);
+  }
 }
 
-__global__ void computeParticleWeights(example_gpu_pf::ObjectState* object_particles, double * weights, example_gpu_pf::ObjectState object_observation,
-                                       objectVariance object_variance)
+
+__global__ void copyParticlesByIndex(example_gpu_pf::ObjectState* d_dst, uint* d_src_index,
+  example_gpu_pf::ObjectState* d_src, uint particle_count)
 {
   unsigned int idx =  blockIdx.x * blockDim.x + threadIdx.x;
-  weights[idx] = computeParticleWeight(object_particles[idx], object_observation, object_variance);
+  if (idx < particle_count)
+  {
+    d_dst[idx] = d_src[d_src_index[idx]];
+  }
+}
+
+__global__ void computeParticleWeights(example_gpu_pf::ObjectState* object_particles, double * weights,
+  example_gpu_pf::ObjectState object_observation,
+  objectVariance object_variance, uint particle_count)
+{
+  unsigned int idx =  blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < particle_count)
+  {
+    weights[idx] = computeParticleWeight(object_particles[idx], object_observation, object_variance);
+  }
 }
 
 void ObjectState::clampPose()
@@ -191,7 +208,6 @@ double computeParticleWeight(const ObjectState& prediction,
   double y_error(prediction.y() - observation.y());
 
   double factor(exp(-x_error*x_error/(obj_var.c_x_*obj_var.c_x_) - y_error*y_error/(obj_var.c_y_*obj_var.c_y_)));
-
   return factor;
 }
 

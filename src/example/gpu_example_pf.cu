@@ -43,26 +43,41 @@ PlanarParticleFilter::~PlanarParticleFilter()
 
 void PlanarParticleFilter::allocateStates()
 {
-  int temp_count(this->getWeightsSize());
-  int output_count(this->getSamplingSize());
+  int padded_temp_count(this->getPaddedWeightsSize());
+  int padded_output_count(this->getPaddedSamplingSize());
 
-  ObjectState* temp_particles = new ObjectState[temp_count];
-  ObjectState* output_particles = new ObjectState[output_count];
+  ObjectState* temp_particles = new ObjectState[padded_temp_count];
+  ObjectState* output_particles = new ObjectState[padded_output_count];
+
+  printf("Allocating %d temp particles and %d output particles.\n", padded_output_count, padded_temp_count);
 
   // allocate the gpu mem and perform the copy operator... (not sure what the best way is)
-  cudaError_t  success_01(cudaMalloc(&d_temp_particles_, sizeof(ObjectState) * temp_count));
-  cudaError_t  success_02(cudaMalloc(&d_output_particles_, sizeof(ObjectState) * output_count));
+  cudaError_t  success_01(cudaMalloc(&d_temp_particles_, sizeof(ObjectState) * padded_temp_count));
+  cudaError_t  success_02(cudaMalloc(&d_output_particles_, sizeof(ObjectState) * padded_output_count));
 
-  cudaMalloc(&d_obj_action_, sizeof(objectAction));
-  cudaMalloc(&d_obj_var_,   sizeof(objectVariance));
+  printf("allocated particles: %s, %s\n", cudaGetErrorString(success_01), cudaGetErrorString(success_02));
+
+  success_01 = cudaMalloc(&d_obj_action_, sizeof(objectAction));
+  success_02 = cudaMalloc(&d_obj_var_,   sizeof(objectVariance));
+
+  printf("allocated IO: %s, %s\n", cudaGetErrorString(success_01), cudaGetErrorString(success_02));
 
   objectAction temp_action(0.0, 0.0);
 
   cudaMemcpy(d_obj_action_, &temp_action, sizeof(objectAction), cudaMemcpyHostToDevice);
+  cudaError_t err = cudaGetLastError();
+  printf("copy 1 temp particles: %s\n", cudaGetErrorString(err));
   cudaMemcpy(d_obj_var_, &object_variance_, sizeof(objectVariance), cudaMemcpyHostToDevice);
+  err = cudaGetLastError();
+  printf("copy 2 temp particles: %s\n", cudaGetErrorString(err));
 
-  cudaMemcpy(d_temp_particles_, temp_particles, sizeof(ObjectState) * temp_count, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_output_particles_, output_particles, sizeof(ObjectState) * output_count, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_temp_particles_, temp_particles, sizeof(ObjectState) * padded_temp_count, cudaMemcpyHostToDevice);
+  err = cudaGetLastError();
+  printf("copy 3 temp particles: %s\n", cudaGetErrorString(err));
+
+  cudaMemcpy(d_output_particles_, output_particles, sizeof(ObjectState) * padded_output_count, cudaMemcpyHostToDevice);
+  err = cudaGetLastError();
+  printf("copy 4 temp particles: %s\n", cudaGetErrorString(err));
 
   delete [] temp_particles;
   delete [] output_particles;
@@ -79,7 +94,9 @@ void PlanarParticleFilter::deallocateStates()
 void PlanarParticleFilter::applyAction(const objectAction &object_action)
 {
   int temp_count(this->getWeightsSize());
+  int padded_temp_count(this->getWeightsSize());
   int output_count(this->getSamplingSize());
+  int padded_output_count(this->getPaddedSamplingSize());
 
   double * d_rand;
   cudaMalloc(&d_rand, temp_count * 2 * sizeof(double));
@@ -89,61 +106,46 @@ void PlanarParticleFilter::applyAction(const objectAction &object_action)
 
   curandSetPseudoRandomGeneratorSeed(prngGPU, rd());
 
-  curandGenerateNormalDouble(prngGPU, d_rand, temp_count * 2, 0.0, 1.0);
+  curandGenerateNormalDouble(prngGPU, d_rand, padded_temp_count * 2, 0.0, 1.0);
 
-  printf("applying the action <%3.3f, %3.3f> \n", object_action.dx_, object_action.dy_);
   cudaMemcpy(d_obj_action_, &object_action, sizeof(objectAction), cudaMemcpyHostToDevice);
 
-  applyActionKernel<<<temp_count, 1>>>(d_obj_action_, d_rand, d_output_particles_, d_temp_particles_, d_obj_var_);
+  uint blockCount = padded_output_count / THREADBLOCK_SIZE;
 
+  // printf("calling the action kernel <%d, %d>\n", blockCount, THREADBLOCK_SIZE);
+  applyActionKernel<<<blockCount, THREADBLOCK_SIZE>>>(d_obj_action_,
+    reinterpret_cast<double2*> (d_rand), d_temp_particles_, d_output_particles_, d_obj_var_, temp_count);
+
+  cudaFree(d_rand);
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess)
-    printf("Error: %s\n", cudaGetErrorString(err));
-
-  ObjectState* local_object_mem_01 = reinterpret_cast<ObjectState*> (malloc(sizeof(ObjectState) * temp_count));
-  ObjectState* local_object_mem_02 = reinterpret_cast<ObjectState*> (malloc(sizeof(ObjectState) * output_count));
-  cudaMemcpy(local_object_mem_01, d_temp_particles_, sizeof(ObjectState) * temp_count, cudaMemcpyDeviceToHost);
-  cudaMemcpy(local_object_mem_02, d_output_particles_, sizeof(ObjectState) * output_count, cudaMemcpyDeviceToHost);
-
-  double * h_rand = reinterpret_cast<double*> (malloc(sizeof(double) * 2 * temp_count));
-  cudaMemcpy(h_rand, d_rand, sizeof(double) * 2 * temp_count, cudaMemcpyDeviceToHost);
-
-  objectAction gpu_action;
-  cudaMemcpy(&gpu_action, d_obj_action_, sizeof(objectAction), cudaMemcpyDeviceToHost);
-  printf("applied the action <%3.3f, %3.3f> \n", gpu_action.dx_, gpu_action.dy_);
-
-  for (int index(0); index < 5; index++)
-  {
-    ROS_INFO("The output position is <%3.3f, %3.3f>", local_object_mem_02[index].x(), local_object_mem_02[index].y());
-    ROS_INFO("The temp position is <%3.3f, %3.3f>", local_object_mem_01[index].x(), local_object_mem_01[index].y());
-    ROS_INFO("The action rand is <%3.3f, %3.3f>", h_rand[index*2], h_rand[index*2 + 1]);
-
-  }
-  free(local_object_mem_01);
-  free(local_object_mem_02);
-  free(h_rand);
-  cudaFree(d_rand);
+    printf("free error: %s\n", cudaGetErrorString(err));
 
 }
 
 void PlanarParticleFilter::applyObservation(const ObjectState &object_observation)
 {
-  int temp_count(this->getWeightsSize());
+  int padded_output_count(this->getPaddedSamplingSize());
+  int output_count(this->getSamplingSize());
+  uint blockCount = padded_output_count / THREADBLOCK_SIZE;
 
-  computeParticleWeights<<<1, temp_count>>> (d_temp_particles_, d_weights_pdf_, object_observation, object_variance_);
-  double * h_weights_cdf = reinterpret_cast<double*> (malloc(sizeof(double) * temp_count));
-  cudaMemcpy(h_weights_cdf, d_weights_cdf_, sizeof(double) * temp_count, cudaMemcpyDeviceToHost);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess)
+    printf("pre Compute particle weight error: %s\n", cudaGetErrorString(err));
 
-  ROS_INFO("The observed position is <%3.3f, %3.3f>", object_observation.x(), object_observation.y());
-  for (int i(0); i < temp_count; i++)
-  {
-    ROS_INFO("The weight at index %d is %f", i, h_weights_cdf[i]);
-  }
+  computeParticleWeights<<<blockCount, THREADBLOCK_SIZE>>>(d_temp_particles_, d_weights_pdf_,
+      object_observation, object_variance_, output_count);
 
-  free(h_weights_cdf);
+  err = cudaGetLastError();
+  if (err != cudaSuccess)
+    printf("Compute particle weight error: %s\n", cudaGetErrorString(err));
 
   this->construct_weight_cdf();
-  this->sampleParticles();
+  this->sampleParticleIndecis();
+
+  copyParticlesByIndex<<<blockCount, THREADBLOCK_SIZE>>>(d_output_particles_,
+    this->d_sample_indices_, d_temp_particles_, output_count);
+
 }
 
 ObjectState PlanarParticleFilter::estimateState()
@@ -158,10 +160,6 @@ ObjectState PlanarParticleFilter::estimateState()
   {
     x += local_object_mem[index].x()/output_count_d;
     y += local_object_mem[index].y()/output_count_d;
-    if (index == 0)
-    {
-      ROS_INFO("The aggregated position is <%3.3f, %3.3f>", local_object_mem[index].x(), local_object_mem[index].y());
-    }
   }
   free(local_object_mem);
   return ObjectState(x, y);

@@ -4,3 +4,4 @@
    name: C++ API
    output_dir: c++
    file_patterns: '*.c *.cpp *.h *.cc *.hh *.dox'
+   exclude_patterns: '*/cmake-build-debug/*'

@@ -22,18 +22,18 @@ namespace gpu_pf
 
 //All three kernels run 512 threads per workgroup
 //Must be a power of two
-#define THREADBLOCK_SIZE 256
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Interface function
 ////////////////////////////////////////////////////////////////////////////////
 //Derived as 32768 (max power-of-two gridDim.x) * 4 * THREADBLOCK_SIZE
 //Due to scanExclusiveShared<<<>>>() 1D block addressing
-extern "C" const uint MAX_BATCH_ELEMENTS = 64 * 1048576;
-extern "C" const uint MIN_SHORT_ARRAY_SIZE = 4;
-extern "C" const uint MAX_SHORT_ARRAY_SIZE = 4 * THREADBLOCK_SIZE;
-extern "C" const uint MIN_LARGE_ARRAY_SIZE = 8 * THREADBLOCK_SIZE;
-extern "C" const uint MAX_LARGE_ARRAY_SIZE = 4 * THREADBLOCK_SIZE * THREADBLOCK_SIZE;
+extern const uint MAX_BATCH_ELEMENTS = 64 * 1048576;
+extern const uint MIN_SHORT_ARRAY_SIZE = 4;
+extern const uint MAX_SHORT_ARRAY_SIZE = 4 * THREADBLOCK_SIZE;
+extern const uint MIN_LARGE_ARRAY_SIZE = 8 * THREADBLOCK_SIZE;
+extern const uint MAX_LARGE_ARRAY_SIZE = 4 * THREADBLOCK_SIZE * THREADBLOCK_SIZE;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,7 +60,7 @@ inline __device__ double scan1Inclusive(double idata, volatile double *s_Data, u
   return s_Data[pos];
 }
 
-inline __device__ uint scan1Exclusive(double idata, volatile double *s_Data, uint size)
+inline __device__ double scan1Exclusive(double idata, volatile double *s_Data, uint size)
 {
   return scan1Inclusive(idata, s_Data, size) - idata;
 }
@@ -73,7 +73,7 @@ inline __device__ double4 scan4Inclusive(double4 idata4, volatile double *s_Data
   idata4.w += idata4.z;
 
   //Level-1 exclusive scan
-  uint oval = scan1Exclusive(idata4.w, s_Data, size / 4);
+  double oval = scan1Exclusive(idata4.w, s_Data, size / 4);
 
   idata4.x += oval;
   idata4.y += oval;
@@ -111,21 +111,153 @@ __global__ void scanExclusiveShared(double4 *d_Dst, double4 *d_Src, uint size)
   d_Dst[pos] = odata4;
 }
 
-
-__global__ void sampleParallel(double *weights, unsigned int *indices, double step,
-                               double seed, int len)
+__global__ void scanInclusiveShared(double4 *d_Dst, double4 *d_Src, double *d_sum, uint size)
 {
-  int idx = threadIdx.x;
-  // get current step in iteration
-  double cur_it = idx * step + seed;
+  __shared__ double s_Data[2 * THREADBLOCK_SIZE];
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
 
-  int i = 0;
-  // once the iterator is less than a weight, we have found the index
-  while (cur_it > weights[i])
+  // Load data
+  double4 idata4 = d_Src[pos];
+
+  // Calculate exclusive scan
+  double4 odata4 = scan4Inclusive(idata4, s_Data, size);
+
+  // Write back
+  d_Dst[pos] = odata4;
+
+  if (pos == (size/4-1))
   {
-    i++;
+    d_sum[0] = odata4.w;
   }
-  indices[idx] = i;
+
+}
+
+__global__ void scanInclusiveShared(double4 *d_Dst, double4 *d_Src, uint size)
+{
+  __shared__ double s_Data[2 * THREADBLOCK_SIZE];
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
+
+  // Load data
+  double4 idata4 = d_Src[pos];
+
+  // Calculate exclusive scan
+  double4 odata4 = scan4Inclusive(idata4, s_Data, size);
+
+  // Write back
+  d_Dst[pos] = odata4;
+}
+
+//Exclusive scan of top elements of bottom-level scans (4 * THREADBLOCK_SIZE)
+__global__ void scanExclusiveShared2(double *d_Buf, double *d_Dst, double *d_Src, uint N, uint arrayLength)
+{
+  __shared__ double s_Data[2 * THREADBLOCK_SIZE];
+
+  // Skip loads and stores for inactive threads of last threadblock (pos >= N)
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
+
+  // Load top elements
+  // Convert results of bottom-level scan back to inclusive
+  double idata = 0;
+
+  if (pos < N)
+    idata = d_Dst[(4 * THREADBLOCK_SIZE) - 1 + (4 * THREADBLOCK_SIZE) * pos] +
+      d_Src[(4 * THREADBLOCK_SIZE) - 1 + (4 * THREADBLOCK_SIZE) * pos];
+
+  // Compute
+  double odata = scan1Exclusive(idata, s_Data, arrayLength);
+
+  // Avoid out-of-bound access
+  if (pos < N)
+  {
+    d_Buf[pos] = odata;
+  }
+}
+
+//inclusive scan of top elements of bottom-level scans (4 * THREADBLOCK_SIZE)
+__global__ void scanInclusiveShared2(double *d_Buf, double *d_Dst, double *d_Src, uint N, uint arrayLength)
+{
+  __shared__ double s_Data[2 * THREADBLOCK_SIZE];
+
+  //Skip loads and stores for inactive threads of last threadblock (pos >= N)
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
+
+  //Load top elements
+  //Convert results of bottom-level scan back to inclusive
+  double idata = 0;
+
+  if (pos < N)
+    idata = d_Dst[(4 * THREADBLOCK_SIZE) - 1 + (4 * THREADBLOCK_SIZE) * pos] +
+      d_Src[(4 * THREADBLOCK_SIZE) - 1 + (4 * THREADBLOCK_SIZE) * pos];
+
+  //Compute
+  double odata = scan1Inclusive(idata, s_Data, arrayLength);
+
+  //Avoid out-of-bound access
+  if (pos < N)
+  {
+    d_Buf[pos] = odata;
+  }
+}
+
+__global__ void uniformUpdate(double4 *d_Data, double *d_Buffer, double* total, uint arrayLength)
+{
+  __shared__ double buf;
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (threadIdx.x == 0)
+  {
+    buf = d_Buffer[blockIdx.x];
+  }
+
+  __syncthreads();
+
+  double4 data4 = d_Data[pos];
+  data4.x += buf;
+  data4.y += buf;
+  data4.z += buf;
+  data4.w += buf;
+  d_Data[pos] = data4;
+
+  if (pos == (arrayLength/4-1))
+  {
+    total[0] = data4.w;
+  }
+}
+
+__global__ void normalizeWeightCDF(double *d_Dst, double* normalizer)
+{
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
+  d_Dst[pos] /= normalizer[0];
+}
+
+__global__ void sampleParallel(double *d_weights_cdf, unsigned int *indices, double step,
+                               double seed, uint len_i)
+{
+  uint pos = blockIdx.x * blockDim.x + threadIdx.x;
+  // get current step in iteration
+  double cur_it = static_cast<double> (pos) * step + seed;
+  uint i = static_cast<uint> (cur_it * static_cast<double>(len_i));
+
+  if (pos < len_i)
+  {
+    // once the iterator is less than a weight, we have found the index
+    double lb(0.0);
+    if (i > 0)
+      lb = d_weights_cdf[i - 1];
+    else lb = 0.0;
+
+    while (cur_it > d_weights_cdf[i] || cur_it < lb) {
+      if (cur_it > d_weights_cdf[i])
+        i++;
+      else
+        i--;
+
+      if (i > 0)
+        lb = d_weights_cdf[i - 1];
+      else lb = 0.0;
+    }
+    indices[pos] = i;
+  }
 }
 
 

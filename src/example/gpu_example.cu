@@ -57,7 +57,7 @@ geometry_msgs::PolygonStamped generatePath(const std_msgs::Header &header)
 int main(int argc, char** argv)
 {
   // intialize the ros node
-  ros::init(argc, argv, "pf_ex_CPU");
+  ros::init(argc, argv, "pf_ex_GPU");
   ros::NodeHandle nh;
 
   // construct the publishers: (no subscribers)
@@ -70,11 +70,14 @@ int main(int argc, char** argv)
   ros::Publisher particle_pub(nh.advertise<visualization_msgs::MarkerArray>("particle_list", 1));
   ros::Publisher path_pub(nh.advertise<geometry_msgs::PolygonStamped>("target_path", 1));
 
-  int particle_count(50);
+  // close to the maximum of 1024 samples.
+  // currently the particle count has to be a multiple of 1024...
+  // @TODO : Fix this limitation.
+  int particle_count(2000);
   ROS_INFO("Starting the example PF with %d particles", particle_count);
 
   example_gpu_pf::objectVariance objectVariance_act(0.1, 0.1, 0.2, 0.2);
-  example_gpu_pf::objectVariance objectVariance_pf(0.15, 0.15, 0.3, 0.3);
+  example_gpu_pf::objectVariance objectVariance_pf(0.2, 0.2, 0.3, 0.3);
 
   example_gpu_pf::PlanarParticleFilter planar_pf(particle_count, objectVariance_pf);
 
@@ -131,14 +134,15 @@ int main(int argc, char** argv)
 
     state_obs_pub.publish(obs_state.statePoint(header));
 
-    // @TODO time this part
+
     int start_s = clock();
     planar_pf.applyAction(obj_act);
     planar_pf.applyObservation(obs_state);
+    int stop_s = clock();
     est_state = planar_pf.estimateState();
     visualization_msgs::MarkerArray particle_array(planar_pf.getParticleArray(header, pf_color));
-    int stop_s = clock();
-    double dt((stop_s-start_s)/ static_cast<double>(CLOCKS_PER_SEC)*1000);
+
+    double dt((stop_s-start_s)/ static_cast<double>(CLOCKS_PER_SEC));
     ROS_INFO("The filter took %4.4f seconds to process %d particles", dt, particle_count);
     ROS_INFO("The aggregated position is <%3.3f, %3.3f>", est_state.x(), est_state.y());
     ROS_INFO("The actual position is <%3.3f, %3.3f>", act_state.x(), act_state.y());
