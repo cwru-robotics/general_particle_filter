@@ -15,8 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef GENERAL_PARTICLE_FILTER_EXAMPLE_CPU_EXAMPLE_PF_H
-#define GENERAL_PARTICLE_FILTER_EXAMPLE_CPU_EXAMPLE_PF_H
+#ifndef GENERAL_PARTICLE_FILTER_EXAMPLE_GPU_EXAMPLE_PF_H
+#define GENERAL_PARTICLE_FILTER_EXAMPLE_GPU_EXAMPLE_PF_H
 
 #include <std_msgs/Header.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -115,6 +115,6 @@ private:
   void deallocateStates();
 };
 
-}  // namespace example_cpu_pf
+}  // namespace example_gpu_pf
 
-#endif  // GENERAL_PARTICLE_FILTER_EXAMPLE_CPU_EXAMPLE_PF_H
+#endif  // GENERAL_PARTICLE_FILTER_EXAMPLE_GPU_EXAMPLE_PF_H

@@ -16,36 +16,98 @@
  */
 
 #include "general_particle_filter/gpu/particle_filter.h"
-
+#include "general_particle_filter/gpu/particle_filter.h"
 
 namespace gpu_pf
 {
+
+uint factorRadix2(uint &log2L, uint L)
+{
+  if (!L)
+  {
+    log2L = 0;
+    return 0;
+  }
+  else
+  {
+    for (log2L = 0; (L & 1) == 0; L >>= 1, log2L++);
+
+    return L;
+  }
+}
+
+
+inline uint pow2roundup (uint x)
+{
+  --x;
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  return x+1;
+}
+
+uint iDivUp(uint dividend, uint divisor)
+{
+  return ((dividend % divisor) == 0) ? (dividend / divisor) : (dividend / divisor + 1);
+}
 
 ParticleFilter::ParticleFilter(int n, int m) :
   d_weights_cdf_(NULL),
   d_weights_pdf_(NULL),
   h_weights_cdf_(NULL),
   h_weights_pdf_(NULL),
-  double_bytes(n * sizeof(double)),
-  int_bytes(n * sizeof(unsigned int)),
+  d_weights_total_(NULL),
   allocated_weights_(0),
+  allocated_weights_padded_block_(0),
+  allocated_weights_padded_opt_(0),
   allocated_samples_(0)
 {
   allocateWeights(n);
   allocateSamples(m);
 }
 
-int ParticleFilter::allocateWeights(int n)
+int ParticleFilter::allocateWeights(uint n)
 {
 
-  size_t allocation_size(static_cast<size_t>(n));
+  uint multiplier4(iDivUp(n, THREADBLOCK_SIZE * 4));
+  uint multiplier(iDivUp(n, THREADBLOCK_SIZE));
+
+
+  uint n_padded_opt_a(4 * THREADBLOCK_SIZE * multiplier4);
+  uint n_padded_block(THREADBLOCK_SIZE * multiplier);
+
+
+  uint log2L;
+  uint factorizationRemainder(factorRadix2(log2L, n_padded_opt_a));
+
+  uint n_padded_opt(pow2roundup(n_padded_opt_a));
+
+  /*if (factorizationRemainder > 1)
+  {
+    n_padded_opt = 2 << (log2L + 1);
+  }*/
+
+  size_t allocation_size(static_cast<size_t>(n_padded_opt));
+
   h_weights_pdf_ = reinterpret_cast<double *> (calloc(allocation_size, sizeof(double)));
   h_weights_cdf_ = reinterpret_cast<double *> (calloc(allocation_size, sizeof(double)));
 
-  cudaError_t  success_01(cudaMalloc((void **) &d_weights_cdf_, double_bytes));
-  cudaError_t  success_02(cudaMalloc((void **) &d_weights_pdf_, double_bytes));
+  cudaError_t  success_01(cudaMalloc((void **) &d_weights_cdf_, allocation_size * sizeof(double)));
+  cudaError_t  success_02(cudaMalloc((void **) &d_weights_pdf_, allocation_size * sizeof(double)));
+
+  cudaMemcpy(d_weights_pdf_, h_weights_pdf_,  sizeof(double) * allocation_size, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_weights_cdf_, h_weights_cdf_,  sizeof(double) * allocation_size, cudaMemcpyHostToDevice);
+
+  cudaError_t  success_03(cudaMalloc((void **) &d_weights_total_, sizeof(double)));
 
   allocated_weights_ = n;
+  allocated_weights_padded_block_ = n_padded_block;
+  allocated_weights_padded_opt_ = n_padded_opt;
+
+  printf("Allocated weight size: <%d, %d, %d, %d>\n", allocated_weights_, allocated_weights_padded_block_,
+    n_padded_opt_a, allocated_weights_padded_opt_);
 
   if (success_01 == cudaSuccess && success_02 == cudaSuccess)
     return 0;
@@ -53,14 +115,23 @@ int ParticleFilter::allocateWeights(int n)
     return -1;
 }
 
-int ParticleFilter::allocateSamples(int n)
+
+int ParticleFilter::allocateSamples(uint n)
 {
   size_t allocation_size(static_cast<size_t>(n));
-  h_sample_indices_ = reinterpret_cast<unsigned int *> (calloc(allocation_size, sizeof(unsigned int)));
 
-  cudaError_t  success(cudaMalloc((void **) &d_sample_indices_, int_bytes));
+  uint n_padded(iDivUp(n , THREADBLOCK_SIZE) * THREADBLOCK_SIZE);
 
+
+  h_sample_indices_ = reinterpret_cast<unsigned int *> (calloc(n_padded, sizeof(unsigned int)));
+
+  cudaError_t  success(cudaMalloc((void **) &d_sample_indices_, n_padded * sizeof(unsigned int)));
+
+  cudaMemcpy(d_sample_indices_, h_sample_indices_,  sizeof(unsigned int) * n_padded, cudaMemcpyHostToDevice);
+
+  printf("allocated sample size: <%d, %d>\n", n, n_padded);
   allocated_samples_ = n;
+  allocated_samples_padded_ = n_padded;
   if (success == cudaSuccess)
     return 0;
   else
@@ -73,48 +144,77 @@ void ParticleFilter::setParticleWeight(int index, double weights)
 }
 
 
-void ParticleFilter::construct_weight_cdf(double denominator)
+void ParticleFilter::construct_weight_cdf()
 {
-  if (allocated_weights_ == 0) return;
+  uint arrayLength(allocated_weights_padded_opt_);
+  uint batchSize(1);
 
-  // first normalize the weights
-  normalize_weights(denominator);
+  //Check power-of-two factorization
+  uint log2L;
+  uint factorizationRemainder = factorRadix2(log2L, arrayLength);
+  assert(factorizationRemainder == 1);
 
-  // Set first weight, note that this is an inclusive cumulative sum.
+  //Check total batch size limit
+  assert((batchSize * arrayLength) <= MAX_BATCH_ELEMENTS);
 
-  h_weights_cdf_[0] = h_weights_pdf_[0];
-
-  //Set remaining weights as sum of all elements before
-  for (int i(1); i < allocated_weights_; i++)
+  if (arrayLength > MAX_SHORT_ARRAY_SIZE)
   {
-    h_weights_cdf_[i] = h_weights_cdf_[i - 1] + h_weights_pdf_[i];
+    double * d_Buf;
+
+    cudaMalloc((void **)&d_Buf, (MAX_BATCH_ELEMENTS / (4 * THREADBLOCK_SIZE)) * sizeof(double));
+
+    // long array analysis
+    //Check supported size range
+    assert((arrayLength <= MAX_LARGE_ARRAY_SIZE));
+
+    scanInclusiveShared<<<(batchSize * arrayLength) / (4 * THREADBLOCK_SIZE), THREADBLOCK_SIZE>>>(
+      reinterpret_cast<double4 *>(d_weights_cdf_),
+      reinterpret_cast<double4 *>(d_weights_pdf_), 4 * THREADBLOCK_SIZE);
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+      printf("Scan Inclusive Error: %s\n", cudaGetErrorString(err));
+
+    // Not all threadblocks need to be packed with input data:
+    // inactive threads of highest threadblock just don't do global reads and writes
+    const uint blockCount2 = iDivUp((batchSize * arrayLength) / (4 * THREADBLOCK_SIZE), THREADBLOCK_SIZE);
+
+    scanExclusiveShared2<<< blockCount2, THREADBLOCK_SIZE>>>(
+        d_Buf, d_weights_cdf_, d_weights_pdf_,
+        (batchSize *arrayLength) / (4 * THREADBLOCK_SIZE),
+        arrayLength / (4 * THREADBLOCK_SIZE)
+    );
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+      printf("Shared Scan 2 Error: %s\n", cudaGetErrorString(err));
+
+    uniformUpdate<<<(batchSize * arrayLength) / (4 * THREADBLOCK_SIZE), THREADBLOCK_SIZE>>>(
+      reinterpret_cast<double4*>(d_weights_cdf_), d_Buf, d_weights_total_, arrayLength);
+
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+      printf("Error: %s\n", cudaGetErrorString(err));
+
+    cudaFree(d_Buf);
   }
+  else
+  {
+    assert((arrayLength >= MIN_SHORT_ARRAY_SIZE));
 
+    // Check all threadblocks to be fully packed with data
+    assert((batchSize * arrayLength) % (4 * THREADBLOCK_SIZE) == 0);
 
-  cudaMemcpy(d_weights_cdf_, h_weights_cdf_, double_bytes, cudaMemcpyHostToDevice);
+    scanInclusiveShared<<<1, THREADBLOCK_SIZE>>>(
+      reinterpret_cast<double4*>(d_weights_cdf_), reinterpret_cast<double4*>(d_weights_pdf_),
+      d_weights_total_, arrayLength);
+  }
+  normalizeWeightCDF<<<arrayLength/THREADBLOCK_SIZE, THREADBLOCK_SIZE>>>(d_weights_cdf_, d_weights_total_);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess)
+    printf("Error: %s\n", cudaGetErrorString(err));
 }
 
-void ParticleFilter::normalize_weights(double denominator)
-{
-  if (allocated_weights_ == 0) return;
-
-  double denom(denominator);
-  if (denom <= 0) //sum all weights
-  {
-    denom = 0.0;
-    for (int i(0); i < allocated_weights_; i++)
-    {
-      denom += h_weights_pdf_[i];
-    }
-  }
-
-  for (int i(0); i < allocated_weights_; i++)
-  {
-    h_weights_pdf_[i] /= denom; // divide each element by denominator
-  }
-}
-
-void ParticleFilter::sampleParticles(double seed)
+void ParticleFilter::sampleParticleIndecis(double seed)
 {
   double i_seed(seed); //initialize random iterator
   double sample_interval(1.0 / static_cast<double>(allocated_samples_)); //declare sample interval as 1/#particles
@@ -124,14 +224,15 @@ void ParticleFilter::sampleParticles(double seed)
     double random = ((double) rand()) / (double) RAND_MAX;  //random # between 0-1
     i_seed = (random * -sample_interval) + sample_interval; //random # between 0 and max
   }
+  uint block_padded(iDivUp(allocated_samples_, THREADBLOCK_SIZE));
+  sampleParallel <<< block_padded, THREADBLOCK_SIZE>>> (d_weights_cdf_, d_sample_indices_,
+    sample_interval, i_seed, allocated_samples_);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess)
+    printf("Compute Sample Indecis Error: %s\n", cudaGetErrorString(err));
 
-  sampleParallel << < 1, allocated_samples_ >> > (d_weights_cdf_, d_sample_indices_,
-    sample_interval, i_seed, allocated_weights_); //get all sampled indices in parallel
-
-  cudaMemcpy(h_sample_indices_, d_sample_indices_, int_bytes, cudaMemcpyDeviceToHost); //copy output to host
+  cudaMemcpy(h_sample_indices_, d_sample_indices_, allocated_samples_ * sizeof(uint), cudaMemcpyDeviceToHost); //copy output to host
 }
-
-
 
 void ParticleFilter::deallocateSamples()
 {
@@ -149,6 +250,8 @@ void ParticleFilter::deallocateWeights()
   h_weights_pdf_ = NULL;
   allocated_weights_ = 0;
   cudaFree(d_weights_cdf_);
+  cudaFree(d_weights_pdf_);
+  cudaFree(d_weights_total_);
 }
 
 unsigned int ParticleFilter::getSampleIndex(unsigned int index)
@@ -167,6 +270,20 @@ int ParticleFilter::getWeightsSize() const
   return allocated_weights_;
 }
 
+int ParticleFilter::getPaddedSamplingSize() const
+{
+  return allocated_samples_padded_;
+}
+
+int ParticleFilter::getPaddedWeightsSize() const
+{
+  return allocated_weights_padded_block_;
+}
+
+int ParticleFilter::get4PaddedWeightsSize() const
+{
+  return allocated_weights_padded_opt_;
+}
 
 
 

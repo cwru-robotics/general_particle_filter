@@ -32,7 +32,7 @@ int main(int argc, char **argv)
         pf.setParticleWeight(i, h_weights[i]);
     pf.construct_weight_cdf();
 
-    pf.sampleParticles(0.05);
+    pf.sampleParticleIndecis(0.05);
 
     return 0;
 }

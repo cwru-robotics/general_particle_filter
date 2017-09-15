@@ -26,10 +26,6 @@
 
 namespace example_gpu_pf
 {
-
-
-
-
 // @TODO Only implement operators and supporting functions AS NEEDED!
 
 /**
@@ -64,7 +60,6 @@ struct objectAction
   dy_(obj.dy_)
   {
   };
-
 };
 
 /**
@@ -129,8 +124,8 @@ private:
   /**
    * @brief the workspace limits of the object state.
    */
-  const static int x_limit_g = 10;
-  const static int y_limit_g = 10;
+  static const int x_limit_g = 10;
+  static const int y_limit_g = 10;
 
 public:
   /**
@@ -149,7 +144,7 @@ public:
    * @param object_state
    * @return a reference to the resulting object
    */
-   __device__ __host__ ObjectState& operator = (const ObjectState& object_state);
+  __device__ __host__ ObjectState& operator = (const ObjectState& object_state);
 
 
   /**
@@ -173,11 +168,21 @@ public:
    * @param obj_act The action
    * @param obj_var The process variance container
    * @param obj_ref The pointer to the object for storage
+   * @param random_scale the randomized noise input (a pointer to 2 doubles).
    */
-  __host__ __device__ void act(const objectAction &obj_act, const double* random_scale,
+  __host__ void act(const objectAction &obj_act, const double* random_scale,
     const objectVariance &obj_var, ObjectState &obj_ref);
 
-  __device__ void act_dev(objectAction *obj_act, double* random_scale,
+
+  /**
+ * @brief Applies the action to a state object and stores it in a provided pointer.
+ *
+ * @param obj_act The action
+ * @param obj_var The process variance container
+ * @param obj_ref The pointer to the object for storage
+ * @param random_scale the randomized noise input.
+ */
+  __device__ void act(objectAction *obj_act, double2* random_scale,
                                objectVariance *obj_var, ObjectState *obj_ptr);
 
 
@@ -250,14 +255,18 @@ __host__ objectAction controlLaw(const ObjectState& state);
 __device__ __host__ double computeParticleWeight(const ObjectState& prediction,
   const ObjectState& observation, const objectVariance& obj_var);
 
-__global__ void applyActionKernel(example_gpu_pf::objectAction* obj_act, double *randomList,
-                                  example_gpu_pf::ObjectState* obj_input, example_gpu_pf::ObjectState* obj_result,
-                                  example_gpu_pf::objectVariance* obj_var);
+__global__ void applyActionKernel(example_gpu_pf::objectAction* obj_act, double2 *randomList,
+                                  example_gpu_pf::ObjectState* obj_result, example_gpu_pf::ObjectState* obj_input,
+                                  example_gpu_pf::objectVariance* obj_var, uint particle_count);
 
 
 __global__ void computeParticleWeights(example_gpu_pf::ObjectState* object_particles,
                                        double * weights, example_gpu_pf::ObjectState object_observation,
-                                       objectVariance object_variance);
+                                       objectVariance object_variance, uint particle_count);
+
+
+__global__ void copyParticlesByIndex(example_gpu_pf::ObjectState* d_dst, uint* d_src_index,
+                                     example_gpu_pf::ObjectState* d_src, uint particle_count);
 
 }  // namespace example_gpu_pf
 
