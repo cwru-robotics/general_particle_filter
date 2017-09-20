@@ -106,7 +106,7 @@ public:
   * It is expected that weight CDF exists and that all of the memory is allocated.
   * The sampling is completed using the low variance algorithm.
   */
-  void sampleParticleIndecis(double seed = -1.0);
+  void sampleParticleIndices(double seed = -1.0);
 
   /**
   * @brief gets the one index from the resample vector
@@ -151,6 +151,9 @@ public:
    * @brief the device side sampled indices computed given a set of weights
    */
   unsigned int * d_sample_indices_;
+
+  double getParticleWeight(int index) const;
+
 
 private:
   /**

@@ -112,7 +112,6 @@ geometry_msgs::PointStamped ObjectState::statePoint(const std_msgs::Header &head
 }
 
 
-
 visualization_msgs::Marker action_marker(const objectAction &action, const ObjectState& state,
   const std_msgs::Header &header, const std_msgs::ColorRGBA& color)
 {

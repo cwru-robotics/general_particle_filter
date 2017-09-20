@@ -87,6 +87,21 @@ before_install:
   - export LD_LIBRARY_PATH=${CUDA_HOME}/nvvm/lib64:${LD_LIBRARY_PATH}
   - export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
   - export PATH=${CUDA_HOME}/bin:${PATH}
+# install the new version of the cmake program
+  - mkdir -p ~/cmake_download 
+  - cd ~/cmake_download && wget https://cmake.org/files/v3.10/cmake-3.10.1.tar.gz
+  - mkdir -p ~/cmake_build
+  - cd ~/cmake_build && tar -xzf ~/cmake_download/cmake-3.10.1.tar.gz
+  - cd ~/cmake_build
+  - cd cmake-3.10.1
+  - mkdir build
+  - cd build
+  - cmake ..
+  - make 
+  - make install
+
+
+
 
 # Create a catkin workspace with the package under integration.
 install:

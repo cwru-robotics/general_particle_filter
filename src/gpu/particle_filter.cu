@@ -16,7 +16,6 @@
  */
 
 #include "general_particle_filter/gpu/particle_filter.h"
-#include "general_particle_filter/gpu/particle_filter.h"
 
 namespace gpu_pf
 {
@@ -106,8 +105,9 @@ int ParticleFilter::allocateWeights(uint n)
   allocated_weights_padded_block_ = n_padded_block;
   allocated_weights_padded_opt_ = n_padded_opt;
 
-  printf("Allocated weight size: <%d, %d, %d, %d>\n", allocated_weights_, allocated_weights_padded_block_,
-    n_padded_opt_a, allocated_weights_padded_opt_);
+  // @TODO(rcj) Identify why this is acting funny
+  // printf("Allocated weight size: <%d, %d, %d, %d>\n", allocated_weights_, allocated_weights_padded_block_,
+  // n_padded_opt_a, allocated_weights_padded_opt_);
 
   if (success_01 == cudaSuccess && success_02 == cudaSuccess)
     return 0;
@@ -129,7 +129,8 @@ int ParticleFilter::allocateSamples(uint n)
 
   cudaMemcpy(d_sample_indices_, h_sample_indices_,  sizeof(unsigned int) * n_padded, cudaMemcpyHostToDevice);
 
-  printf("allocated sample size: <%d, %d>\n", n, n_padded);
+  // @TODO(rcj) Identify why this is acting funny
+  // printf("allocated sample size: <%d, %d>\n", n, n_padded);
   allocated_samples_ = n;
   allocated_samples_padded_ = n_padded;
   if (success == cudaSuccess)
@@ -172,8 +173,9 @@ void ParticleFilter::construct_weight_cdf()
       reinterpret_cast<double4 *>(d_weights_pdf_), 4 * THREADBLOCK_SIZE);
 
     cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess)
-      printf("Scan Inclusive Error: %s\n", cudaGetErrorString(err));
+    // @TODO(rcj) Identify why this is acting funny
+    // if (err != cudaSuccess)
+      // printf("Scan Inclusive Error: %s\n", cudaGetErrorString(err));
 
     // Not all threadblocks need to be packed with input data:
     // inactive threads of highest threadblock just don't do global reads and writes
@@ -185,15 +187,17 @@ void ParticleFilter::construct_weight_cdf()
         arrayLength / (4 * THREADBLOCK_SIZE)
     );
     err = cudaGetLastError();
-    if (err != cudaSuccess)
-      printf("Shared Scan 2 Error: %s\n", cudaGetErrorString(err));
+    // if (err != cudaSuccess)
+      // @TODO(rcj) Identify why this is acting funny
+      // printf("Shared Scan 2 Error: %s\n", cudaGetErrorString(err));
 
     uniformUpdate<<<(batchSize * arrayLength) / (4 * THREADBLOCK_SIZE), THREADBLOCK_SIZE>>>(
       reinterpret_cast<double4*>(d_weights_cdf_), d_Buf, d_weights_total_, arrayLength);
 
     err = cudaGetLastError();
-    if (err != cudaSuccess)
-      printf("Error: %s\n", cudaGetErrorString(err));
+    // @TODO(rcj) Identify why this is acting funny
+    //if (err != cudaSuccess)
+      // printf("Error: %s\n", cudaGetErrorString(err));
 
     cudaFree(d_Buf);
   }
@@ -210,11 +214,12 @@ void ParticleFilter::construct_weight_cdf()
   }
   normalizeWeightCDF<<<arrayLength/THREADBLOCK_SIZE, THREADBLOCK_SIZE>>>(d_weights_cdf_, d_weights_total_);
   cudaError_t err = cudaGetLastError();
-  if (err != cudaSuccess)
-    printf("Error: %s\n", cudaGetErrorString(err));
+  // @TODO(rcj) Identify why this is acting funny
+  // if (err != cudaSuccess)
+    // printf("Error: %s\n", cudaGetErrorString(err));
 }
 
-void ParticleFilter::sampleParticleIndecis(double seed)
+void ParticleFilter::sampleParticleIndices(double seed)
 {
   double i_seed(seed); //initialize random iterator
   double sample_interval(1.0 / static_cast<double>(allocated_samples_)); //declare sample interval as 1/#particles
@@ -228,8 +233,9 @@ void ParticleFilter::sampleParticleIndecis(double seed)
   sampleParallel <<< block_padded, THREADBLOCK_SIZE>>> (d_weights_cdf_, d_sample_indices_,
     sample_interval, i_seed, allocated_samples_);
   cudaError_t err = cudaGetLastError();
-  if (err != cudaSuccess)
-    printf("Compute Sample Indecis Error: %s\n", cudaGetErrorString(err));
+  // @TODO(rcj) Identify why this is acting funny
+  // if (err != cudaSuccess)
+    // printf("Compute Sample Indecis Error: %s\n", cudaGetErrorString(err));
 
   cudaMemcpy(h_sample_indices_, d_sample_indices_, allocated_samples_ * sizeof(uint), cudaMemcpyDeviceToHost); //copy output to host
 }
@@ -285,7 +291,11 @@ int ParticleFilter::get4PaddedWeightsSize() const
   return allocated_weights_padded_opt_;
 }
 
-
+//TODO Device or host side weights?
+double ParticleFilter::getParticleWeight(int index) const
+{
+  return d_weights_pdf_[index];
+}
 
 
 }  // namespace gpu_pf

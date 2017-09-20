@@ -70,7 +70,7 @@ int main(int argc, char** argv)
   ros::Publisher particle_pub(nh.advertise<visualization_msgs::MarkerArray>("particle_list", 1));
   ros::Publisher path_pub(nh.advertise<geometry_msgs::PolygonStamped>("target_path", 1));
 
-  int particle_count(2000);
+  int particle_count(4000);
   ROS_INFO("Starting the example PF with %d particles", particle_count);
 
   example_cpu_pf::objectVariance objectVariance_act(0.1, 0.1, 0.2, 0.2);
@@ -109,9 +109,15 @@ int main(int argc, char** argv)
   pf_color.g = 1.0;
   pf_color.r = 0.1;
 
+  int iteration=0;
+
+  double total_time = 0.0;
+  double total_err = 0.0;
+
   unsigned int index(0);
-  while (ros::ok())
+  while (iteration<20)
   {
+    iteration+=1;
     // get a new header
     std_msgs::Header header(gen_header(index));
     example_cpu_pf::objectAction obj_act(example_cpu_pf::controlLaw(est_state));
@@ -132,9 +138,10 @@ int main(int argc, char** argv)
     est_state = planar_pf.estimateState();
     visualization_msgs::MarkerArray particle_array(planar_pf.getParticleArray(header, pf_color));
     int stop_s = clock();
-    double dt((stop_s-start_s)/ static_cast<double>(CLOCKS_PER_SEC)*1000);
+    double dt((stop_s-start_s)/ static_cast<double>(CLOCKS_PER_SEC));
     ROS_INFO("The filter took %4.4f seconds to process %d particles", dt, particle_count);
-
+    double err = pow(pow(est_state.x() - act_state.x(), 2) + pow(est_state.x() - act_state.x(), 2), 0.5);
+    ROS_INFO("The error in position is <%3.3f>", err);
 
     particle_pub.publish(particle_array);
     state_pub.publish(act_state.statePoint(header));
@@ -145,6 +152,18 @@ int main(int argc, char** argv)
 
     index++;
     ros::Duration(0.75).sleep();
+
+    total_time +=dt;
+    total_err +=err;
+
   }
+
+
+  double avg_time = total_time / iteration;
+  double avg_err = total_err/iteration;
+
+  ROS_INFO("The number of iterations is <%d>", iteration);
+  ROS_INFO("The average error in position is <%3.3f>", avg_err);
+  ROS_INFO("The average time to process particles is <%3.3f>", avg_time);
   return 0;
 }
