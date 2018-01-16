@@ -96,16 +96,14 @@ before_install:
   - cd cmake-3.10.1
   - mkdir build
   - cd build
-  - cmake ..
+  - cmake .. >/dev/null
   - make 
-  - make install
-
+  - sudo make install
 
 
 
 # Create a catkin workspace with the package under integration.
 install:
-
 
   - mkdir -p ~/catkin_ws/src
   - cd ~/catkin_ws/src
