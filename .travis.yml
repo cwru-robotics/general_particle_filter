@@ -44,7 +44,6 @@
 # Use ubuntu trusty (14.04) with sudo privileges.
 dist: trusty
 sudo: required
-group: deprecated-2017Q2
 language:
   - generic
 cache:
@@ -94,11 +93,11 @@ before_install:
   - cd ~/cmake_build && tar -xzf ~/cmake_download/cmake-3.10.1.tar.gz
   - cd ~/cmake_build
   - cd cmake-3.10.1
-  - mkdir build
+  - mkdir build 
   - cd build
   - cmake .. >/dev/null
-  - make 
-  - sudo make install
+  - make >/dev/null
+  - sudo make install >/dev/null
 
 
 

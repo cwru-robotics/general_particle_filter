@@ -109,13 +109,13 @@ int main(int argc, char** argv)
   pf_color.g = 1.0;
   pf_color.r = 0.1;
 
-  int iteration=0;
+  int iteration = 0;
 
   double total_time = 0.0;
   double total_err = 0.0;
 
   unsigned int index(0);
-  while (iteration<20)
+  while (iteration < 20)
   {
     iteration+=1;
     // get a new header
@@ -153,9 +153,8 @@ int main(int argc, char** argv)
     index++;
     ros::Duration(0.75).sleep();
 
-    total_time +=dt;
-    total_err +=err;
-
+    total_time += dt;
+    total_err += err;
   }
 
 

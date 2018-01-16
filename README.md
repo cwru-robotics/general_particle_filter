@@ -23,10 +23,16 @@ To run this demo use the following commands:
 roslaunch general_particle_filter example_cpu.launch
 ```
 
-This demo launches both a simple planar simulator as well as an rviz interface 
-
+This demo launches both a simple planar simulator as well as an rviz interface where the simulator can be watched.
+The time per filter loop execution is displayed.
 
 ## GPU (CUDA) Based Particle Filter and Demo
 
 ### GPU (CUDA) demo
 
+```bash
+roslaunch general_particle_filter example_gpu.launch
+```
+
+This demo launches both a simple planar simulator as well as an rviz interface where the simulator can be watched.
+The time per filter loop execution is displayed.
