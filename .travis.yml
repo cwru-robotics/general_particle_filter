@@ -68,12 +68,9 @@ before_install:
   - sudo sh -c "echo \"deb http://packages.ros.org/ros/ubuntu $ROS_CI_DESKTOP main\" > /etc/apt/sources.list.d/ros-latest.list"
   - wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
   - sudo apt-get update -qq
-  - sudo apt-get install -y python-catkin-pkg python-rosdep python-wstool ros-$ROS_DISTRO-catkin
-  - sudo apt-get install libeigen3-dev
-  - source /opt/ros/$ROS_DISTRO/setup.bash
-  # Prepare rosdep to install dependencies.
-  - sudo rosdep init
-  - rosdep update
+  - sudo apt-get install -y python-catkin-pkg python-rosdep python-wstool ros-$ROS_DISTRO-catkin >/dev/null
+  - sudo apt-get install -y libeigen3-dev >/dev/null
+
 
   - travis_retry wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1404/x86_64/cuda-repo-ubuntu1404_${CUDA}_amd64.deb
   - travis_retry sudo dpkg -i cuda-repo-ubuntu1404_${CUDA}_amd64.deb
@@ -99,7 +96,10 @@ before_install:
   - make >/dev/null
   - sudo make install >/dev/null
 
-
+  - source /opt/ros/$ROS_DISTRO/setup.bash
+  # Prepare rosdep to install dependencies.
+  - sudo rosdep init
+  - rosdep update
 
 # Create a catkin workspace with the package under integration.
 install:
