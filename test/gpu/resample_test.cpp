@@ -49,7 +49,7 @@ TEST_F(resamplingTest, testResampling)
 
   construct_weight_cdf();
 
-  sampleParticles(seed);
+  sampleParticlesIndecis(seed);
 
   for (unsigned int i = 0; i < 10; i++)
   {

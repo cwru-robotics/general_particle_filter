@@ -141,8 +141,7 @@ void PlanarParticleFilter::applyObservation(const ObjectState &object_observatio
     printf("Compute particle weight error: %s\n", cudaGetErrorString(err));
 
   this->construct_weight_cdf();
-  this->sampleParticleIndecis();
-
+  this->sampleParticleIndices();
   copyParticlesByIndex<<<blockCount, THREADBLOCK_SIZE>>>(d_output_particles_,
     this->d_sample_indices_, d_temp_particles_, output_count);
 

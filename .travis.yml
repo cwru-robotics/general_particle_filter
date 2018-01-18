@@ -44,7 +44,6 @@
 # Use ubuntu trusty (14.04) with sudo privileges.
 dist: trusty
 sudo: required
-group: deprecated-2017Q2
 language:
   - generic
 cache:
@@ -69,28 +68,41 @@ before_install:
   - sudo sh -c "echo \"deb http://packages.ros.org/ros/ubuntu $ROS_CI_DESKTOP main\" > /etc/apt/sources.list.d/ros-latest.list"
   - wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
   - sudo apt-get update -qq
-  - sudo apt-get install -y python-catkin-pkg python-rosdep python-wstool ros-$ROS_DISTRO-catkin
-  - sudo apt-get install libeigen3-dev
-  - source /opt/ros/$ROS_DISTRO/setup.bash
-  # Prepare rosdep to install dependencies.
-  - sudo rosdep init
-  - rosdep update
+  - sudo apt-get install -y python-catkin-pkg python-rosdep python-wstool ros-$ROS_DISTRO-catkin >/dev/null
+  - sudo apt-get install -y libeigen3-dev >/dev/null
+
 
   - travis_retry wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1404/x86_64/cuda-repo-ubuntu1404_${CUDA}_amd64.deb
   - travis_retry sudo dpkg -i cuda-repo-ubuntu1404_${CUDA}_amd64.deb
   - travis_retry sudo apt-get update -qq
   - export CUDA_APT=${CUDA:0:3}
   - export CUDA_APT=${CUDA_APT/./-}
-  - travis_retry sudo apt-get install -y cuda-drivers cuda-core-${CUDA_APT} cuda-cudart-dev-${CUDA_APT} cuda-cufft-dev-${CUDA_APT} cuda-cublas-dev-${CUDA_APT}
+  - travis_retry sudo apt-get install -y cuda-drivers cuda-core-${CUDA_APT} cuda-cudart-dev-${CUDA_APT} cuda-cufft-dev-${CUDA_APT} cuda-cublas-dev-${CUDA_APT} >/dev/null
   - travis_retry sudo apt-get clean
   - export CUDA_HOME=/usr/local/cuda-${CUDA:0:3}
   - export LD_LIBRARY_PATH=${CUDA_HOME}/nvvm/lib64:${LD_LIBRARY_PATH}
   - export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
   - export PATH=${CUDA_HOME}/bin:${PATH}
+# install the new version of the cmake program
+  - mkdir -p ~/cmake_download 
+  - cd ~/cmake_download && wget https://cmake.org/files/v3.10/cmake-3.10.1.tar.gz
+  - mkdir -p ~/cmake_build
+  - cd ~/cmake_build && tar -xzf ~/cmake_download/cmake-3.10.1.tar.gz
+  - cd ~/cmake_build
+  - cd cmake-3.10.1
+  - mkdir build 
+  - cd build
+  - cmake .. >/dev/null
+  - make >/dev/null
+  - sudo make install >/dev/null
+
+  - source /opt/ros/$ROS_DISTRO/setup.bash
+  # Prepare rosdep to install dependencies.
+  - sudo rosdep init
+  - rosdep update
 
 # Create a catkin workspace with the package under integration.
 install:
-
 
   - mkdir -p ~/catkin_ws/src
   - cd ~/catkin_ws/src
@@ -128,7 +140,9 @@ before_script:
 script:
   - source /opt/ros/$ROS_DISTRO/setup.bash
   - cd ~/catkin_ws
-  - catkin_make $( [ -f $CATKIN_OPTIONS ] && cat $CATKIN_OPTIONS )
+  #- catkin_make  $( [ -f $CATKIN_OPTIONS ] && cat $CATKIN_OPTIONS )
+  - catkin_make || true
+  - catkin_make
   # Run the tests, ensuring the path is set correctly.
   - source devel/setup.bash
   - catkin_make run_tests && catkin_make test
